@@ -27,7 +27,8 @@ The app features **smooth navigation with custom page transitions**, **offline b
 - **Flutter (Dart)** – UI framework  
 - **BLoC (flutter_bloc)** – State management  
 - **Equatable** – Value comparison for BLoC states/events  
-- **Dio** – Network requests and API handling  
+- **Dio** – Network requests and API handling
+- **Connectivity Plus** – Check and handle internet connectivity for a smooth user experience
 - **Cached Network Image** – Optimized image caching and loading  
 - **Google Fonts** – Beautiful typography  
 - **Flutter Dotenv** – Environment variable management (API keys)  
