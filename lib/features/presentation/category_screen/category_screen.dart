@@ -1,6 +1,5 @@
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
-import "package:news_app/core/themes/app_colors.dart";
 import "package:news_app/features/presentation/category_screen/bloc/category_bloc.dart";
 import "package:news_app/features/widgets/article_card.dart";
 
@@ -109,13 +108,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
                 );
               }
 
-              return Expanded(
-                child: ListView.builder(
-                  itemCount: state.articles.length,
-                  itemBuilder: (context, index) {
-                    return ArticleCard(article: state.articles[index]);
-                  },
-                ),
+              return ListView.builder(
+                itemCount: state.articles.length,
+                itemBuilder: (context, index) {
+                  return ArticleCard(article: state.articles[index]);
+                },
               );
             }
 

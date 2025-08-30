@@ -1,14 +1,18 @@
+// lib/features/presentation/world_news_screen/bloc/world_news_bloc.dart
 import 'dart:developer';
+
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:news_app/core/constants/api_constant.dart';
+import 'package:news_app/core/mixin/connectivity_mixin.dart';
 import 'package:news_app/features/models/article_model.dart';
 
 part 'world_news_event.dart';
 part 'world_news_state.dart';
 
-class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
+class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState>
+    with ConnectivityMixin {
   final Dio _dio = Dio();
 
   WorldNewsBloc() : super(WorldNewsInitial()) {
@@ -28,15 +32,21 @@ class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
   }
 
   Future<void> _onLoadWorldTopHeadlines(
-      LoadWorldTopHeadlines event, Emitter<WorldNewsState> emit) async {
+    LoadWorldTopHeadlines event,
+    Emitter<WorldNewsState> emit,
+  ) async {
     emit(WorldNewsLoading());
+
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(WorldNewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final response = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.topHeadlines}",
-        queryParameters: {
-          "apiKey": ApiConstants.apiKey,
-          "language": "en",
-        },
+        queryParameters: {"apiKey": ApiConstants.apiKey, "language": "en"},
       );
 
       if (response.statusCode == 200) {
@@ -45,35 +55,59 @@ class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
       } else {
         emit(WorldNewsError("Failed to load world top headlines"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(WorldNewsError(noInternetMessage));
+      } else {
+        emit(WorldNewsError("Error loading world top headlines: ${e.message}"));
+      }
     } catch (e) {
       log("World Top Headlines Error: ${e.toString()}");
       emit(WorldNewsError("Error loading world top headlines: $e"));
     }
   }
 
-  // Updated LoadWorldEverything with pagination support
   Future<void> _onLoadWorldEverything(
-      LoadWorldEverything event, Emitter<WorldNewsState> emit) async {
+    LoadWorldEverything event,
+    Emitter<WorldNewsState> emit,
+  ) async {
     emit(WorldNewsLoading());
+
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(WorldNewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final response = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.everything}",
         queryParameters: {
           "apiKey": ApiConstants.apiKey,
           "q": "world",
-          "pageSize": 100, // Fetch more articles for pagination
+          "pageSize": 100,
         },
       );
 
       if (response.statusCode == 200) {
         final articles = _processArticles(response.data["articles"]);
-        emit(WorldEverythingLoaded(
-          allArticles: articles,
-          displayedArticles: articles.take(10).toList(), // Show first 10
-          hasMoreData: articles.length > 10,
-        ));
+        emit(
+          WorldEverythingLoaded(
+            allArticles: articles,
+            displayedArticles: articles.take(10).toList(), // Show first 10
+            hasMoreData: articles.length > 10,
+          ),
+        );
       } else {
         emit(WorldNewsError("Failed to load world news"));
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(WorldNewsError(noInternetMessage));
+      } else {
+        emit(WorldNewsError("Error loading world everything: ${e.message}"));
       }
     } catch (e) {
       log("World Everything Error: ${e.toString()}");
@@ -81,20 +115,25 @@ class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
     }
   }
 
-  // New LoadMoreWorldEverything handler
   Future<void> _onLoadMoreWorldEverything(
-      LoadMoreWorldEverything event, Emitter<WorldNewsState> emit) async {
+    LoadMoreWorldEverything event,
+    Emitter<WorldNewsState> emit,
+  ) async {
     if (state is WorldEverythingLoaded) {
       final currentState = state as WorldEverythingLoaded;
-      
+
       if (!currentState.hasMoreData || currentState.isLoadingMore) {
-        return; // Don't load if no more data or already loading
+        return;
       }
 
-      // Emit loading more state
+      final bool isConnected = await checkConnectivity();
+      if (!isConnected) {
+        emit(WorldNewsError(noInternetMessage));
+        return;
+      }
+
       emit(currentState.copyWith(isLoadingMore: true));
 
-      // Simulate a small delay for better UX
       await Future.delayed(const Duration(milliseconds: 500));
 
       final currentDisplayedCount = currentState.displayedArticles.length;
@@ -108,18 +147,31 @@ class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
         ...nextBatch,
       ];
 
-      emit(WorldEverythingLoaded(
-        allArticles: currentState.allArticles,
-        displayedArticles: updatedDisplayedArticles,
-        hasMoreData: updatedDisplayedArticles.length < currentState.allArticles.length,
-        isLoadingMore: false,
-      ));
+      emit(
+        WorldEverythingLoaded(
+          allArticles: currentState.allArticles,
+          displayedArticles: updatedDisplayedArticles,
+          hasMoreData:
+              updatedDisplayedArticles.length < currentState.allArticles.length,
+          isLoadingMore: false,
+        ),
+      );
     }
   }
 
   Future<void> _onSearchWorldNews(
-      SearchWorldNews event, Emitter<WorldNewsState> emit) async {
+    SearchWorldNews event,
+    Emitter<WorldNewsState> emit,
+  ) async {
     emit(WorldNewsLoading());
+
+    // Check connectivity first
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(WorldNewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final response = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.everything}",
@@ -136,30 +188,54 @@ class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
       } else {
         emit(WorldNewsError("Failed to search world news"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(WorldNewsError(noInternetMessage));
+      } else {
+        emit(WorldNewsError("Error searching world news: ${e.message}"));
+      }
     } catch (e) {
       log("World Search Error: ${e.toString()}");
       emit(WorldNewsError("Error searching world news: $e"));
     }
   }
 
-  // Updated Refresh handler
   Future<void> _onRefreshWorldNews(
-      RefreshWorldNews event, Emitter<WorldNewsState> emit) async {
+    RefreshWorldNews event,
+    Emitter<WorldNewsState> emit,
+  ) async {
     emit(WorldNewsLoading());
+
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(WorldNewsError(noInternetMessage));
+      return;
+    }
+
     try {
       // Refresh Top Headlines
       final topHeadlinesResponse = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.topHeadlines}",
-        queryParameters: {
-          "apiKey": ApiConstants.apiKey,
-          "language": "en",
-        },
+        queryParameters: {"apiKey": ApiConstants.apiKey, "language": "en"},
       );
 
       if (topHeadlinesResponse.statusCode == 200) {
-        final articles = _processArticles(topHeadlinesResponse.data["articles"]);
+        final articles = _processArticles(
+          topHeadlinesResponse.data["articles"],
+        );
         emit(WorldNewsLoaded(articles, newsType: "🌍 Top Headlines"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(WorldNewsError(noInternetMessage));
+      } else {
+        emit(
+          WorldNewsError("Error refreshing world top headlines: ${e.message}"),
+        );
+      }
+      return;
     } catch (e) {
       emit(WorldNewsError("Error refreshing world top headlines: $e"));
       return;
@@ -178,11 +254,20 @@ class WorldNewsBloc extends Bloc<WorldNewsEvent, WorldNewsState> {
 
       if (everythingResponse.statusCode == 200) {
         final articles = _processArticles(everythingResponse.data["articles"]);
-        emit(WorldEverythingLoaded(
-          allArticles: articles,
-          displayedArticles: articles.take(10).toList(),
-          hasMoreData: articles.length > 10,
-        ));
+        emit(
+          WorldEverythingLoaded(
+            allArticles: articles,
+            displayedArticles: articles.take(10).toList(),
+            hasMoreData: articles.length > 10,
+          ),
+        );
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(WorldNewsError(noInternetMessage));
+      } else {
+        emit(WorldNewsError("Error refreshing world everything: ${e.message}"));
       }
     } catch (e) {
       emit(WorldNewsError("Error refreshing world everything: $e"));

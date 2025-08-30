@@ -1,14 +1,16 @@
+// lib/features/presentation/news_screen/bloc/news_bloc.dart
 import "dart:developer";
 import "package:dio/dio.dart";
 import "package:equatable/equatable.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:news_app/core/constants/api_constant.dart";
+import "package:news_app/core/mixin/connectivity_mixin.dart";
 import "package:news_app/features/models/article_model.dart";
 
 part "news_event.dart";
 part "news_state.dart";
 
-class NewsBloc extends Bloc<NewsEvent, NewsState> {
+class NewsBloc extends Bloc<NewsEvent, NewsState> with ConnectivityMixin {
   final Dio _dio = Dio();
   
   NewsBloc() : super(NewsInitial()) {
@@ -27,9 +29,16 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
         .toList();
   }
 
-  // 1. Top Headlines API Call
   Future<void> _onLoadTopHeadlines(LoadTopHeadlines event, Emitter<NewsState> emit) async {
     emit(NewsLoading());
+    
+    // Check connectivity
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(NewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final response = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.topHeadlines}",
@@ -46,22 +55,35 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
       } else {
         emit(NewsError("Failed to load top headlines"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(NewsError(noInternetMessage));
+      } else {
+        emit(NewsError("Error loading top headlines: ${e.message}"));
+      }
     } catch (e) {
       log("Top Headlines Error: ${e.toString()}");
       emit(NewsError("Error loading top headlines: $e"));
     }
   }
 
-  // 2. Everything API Call with Pagination Support
   Future<void> _onLoadEverything(LoadEverything event, Emitter<NewsState> emit) async {
     emit(NewsLoading());
+    
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(NewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final response = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.everything}",
         queryParameters: {
           "apiKey": ApiConstants.apiKey,
           "q": "india",
-          "pageSize": 100, // Fetch more articles for pagination
+          "pageSize": 100, 
         },
       );
 
@@ -76,13 +98,19 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
       } else {
         emit(NewsError("Failed to load everything news"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(NewsError(noInternetMessage));
+      } else {
+        emit(NewsError("Error loading everything news: ${e.message}"));
+      }
     } catch (e) {
       log("Everything Error: ${e.toString()}");
       emit(NewsError("Error loading everything news: $e"));
     }
   }
 
-  // 3. Load More Everything Articles
   Future<void> _onLoadMoreEverything(LoadMoreEverything event, Emitter<NewsState> emit) async {
     if (state is EverythingNewsLoaded) {
       final currentState = state as EverythingNewsLoaded;
@@ -91,10 +119,15 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
         return; // Don't load if no more data or already loading
       }
 
-      // Emit loading more state
+      // Check connectivity before loading more
+      final bool isConnected = await checkConnectivity();
+      if (!isConnected) {
+        emit(NewsError(noInternetMessage));
+        return;
+      }
+
       emit(currentState.copyWith(isLoadingMore: true));
 
-      // Simulate a small delay for better UX
       await Future.delayed(const Duration(milliseconds: 500));
 
       final currentDisplayedCount = currentState.displayedArticles.length;
@@ -117,9 +150,15 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
     }
   }
 
-  // 4. Search News API Call
   Future<void> _onSearchNews(SearchNews event, Emitter<NewsState> emit) async {
     emit(NewsLoading());
+    
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(NewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final response = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.everything}",
@@ -136,15 +175,29 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
       } else {
         emit(NewsError("Failed to search news"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(NewsError(noInternetMessage));
+      } else {
+        emit(NewsError("Error searching news: ${e.message}"));
+      }
     } catch (e) {
       log("Search Error: ${e.toString()}");
       emit(NewsError("Error searching news: $e"));
     }
   }
 
-  // 5. Refresh News
   Future<void> _onRefreshNews(RefreshNews event, Emitter<NewsState> emit) async {
     emit(NewsLoading());
+    
+    // Check connectivity first
+    final bool isConnected = await checkConnectivity();
+    if (!isConnected) {
+      emit(NewsError(noInternetMessage));
+      return;
+    }
+
     try {
       final topHeadlinesResponse = await _dio.get(
         "${ApiConstants.baseUrl}${ApiConstants.topHeadlines}",
@@ -159,6 +212,14 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
         final processedArticles = _processArticles(articles);
         emit(NewsLoaded(processedArticles, newsType: "Top Headlines 🇮🇳"));
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(NewsError(noInternetMessage));
+      } else {
+        emit(NewsError("Error refreshing top headlines: ${e.message}"));
+      }
+      return;
     } catch (e) {
       emit(NewsError("Error refreshing top headlines: $e"));
       return;
@@ -182,6 +243,13 @@ class NewsBloc extends Bloc<NewsEvent, NewsState> {
           displayedArticles: processedArticles.take(10).toList(),
           hasMoreData: processedArticles.length > 10,
         ));
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionError || 
+          e.type == DioExceptionType.connectionTimeout) {
+        emit(NewsError(noInternetMessage));
+      } else {
+        emit(NewsError("Error refreshing everything news: ${e.message}"));
       }
     } catch (e) {
       emit(NewsError("Error refreshing everything news: $e"));
