@@ -93,8 +93,8 @@ The app features **smooth navigation with custom page transitions**, **offline b
 ### ✅ Steps to Run
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/chef_ai.git
-   cd chef_ai
+   git clone https://github.com/your-username/news_app.git
+   cd news_app
 2. **Install dependencies**
    ```bash
    flutter pub get
